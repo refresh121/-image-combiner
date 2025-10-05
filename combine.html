@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<title>چسباندن عکس‌ها و دانلود ZIP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.11.0/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+  body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+  #preview { border: 3px solid #4CAF50; background: #fff; padding: 10px; max-height: 300px; overflow-y: auto; }
+  .image-info { margin: 5px 0; padding: 5px; background: #e0e0e0; border-radius: 4px; }
+  input, button { margin: 10px 0; padding: 8px; }
+  #progress { margin-top: 10px; width: 100%; background: #ccc; height: 25px; border-radius: 5px; overflow: hidden; }
+  #progress-bar { width: 0%; height: 100%; background: #4CAF50; text-align: center; color: white; line-height: 25px; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>چسباندن عکس‌ها و ذخیره در ZIP</h2>
+
+<label>انتخاب عکس‌ها:</label>
+<input type="file" id="files" multiple accept="image/*"><br>
+
+<label>عرض دلخواه (px):</label>
+<input type="number" id="width" value="18000"><br>
+
+<button onclick="combineAndZip()">چسباندن و دانلود ZIP</button>
+
+<div id="progress"><div id="progress-bar">0%</div></div>
+
+<h3>پیش‌نمایش عکس‌ها:</h3>
+<div id="preview"></div>
+
+<script>
+let images = [];
+
+document.getElementById('files').addEventListener('change', function(e) {
+    images = [];
+    const preview = document.getElementById('preview');
+    preview.innerHTML = '';
+    const files = e.target.files;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'image-info';
+                infoDiv.textContent = `نام: ${file.name} | ابعاد: ${img.width}x${img.height}`;
+                preview.appendChild(infoDiv);
+
+                images.push({img: img, name: file.name});
+            }
+            img.src = event.target.result;
+        }
+        reader.readAsDataURL(file);
+    }
+});
+
+async function combineAndZip() {
+    if (images.length === 0) { alert("لطفاً عکس انتخاب کنید!"); return; }
+
+    const targetWidth = parseInt(document.getElementById('width').value);
+    const progressBar = document.getElementById('progress-bar');
+    const zip = new JSZip();
+
+    for (let i = 0; i < images.length; i++) {
+        const obj = images[i];
+        const img = obj.img;
+        const ratio = targetWidth / img.width;
+
+        // ایجاد Canvas برای تغییر اندازه
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = img.height * ratio;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // تبدیل Canvas به Blob
+        const dataURL = canvas.toDataURL('image/png');
+        const blob = await (await fetch(dataURL)).blob();
+        zip.file(`image_${String(i+1).padStart(2,'0')}.png`, blob);
+
+        // آپدیت نوار پیشرفت لحظه‌ای
+        const percent = Math.round(((i+1)/images.length)*50);
+        progressBar.style.width = percent + "%";
+        progressBar.textContent = `آماده سازی: ${percent}%`;
+
+        await new Promise(r => setTimeout(r, 50)); // اجازه بده UI آپدیت بشه
+    }
+
+    // درخواست اسم فایل ZIP از کاربر
+    let zipName = prompt("نام فایل ZIP را وارد کنید:", "images");
+    if (!zipName) zipName = "images";
+
+    // تولید ZIP با آپدیت پیشرفت لحظه‌ای
+    progressBar.textContent = "در حال فشرده‌سازی...";
+    const content = await zip.generateAsync({type:"blob"}, (metadata) => {
+        const percent = 50 + Math.round(metadata.percent/2); // نصف دوم درصد
+        progressBar.style.width = percent + "%";
+        progressBar.textContent = `فشرده‌سازی: ${Math.round(metadata.percent)}%`;
+    });
+
+    // دانلود فایل ZIP
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(content);
+    link.href = url;
+    link.download = zipName + ".zip";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    progressBar.textContent = "دانلود کامل شد!";
+    progressBar.style.width = "100%";
+    setTimeout(() => { progressBar.style.width = '0%'; progressBar.textContent = '0%'; }, 3000);
+}
+</script>
+</body>
+</html>
